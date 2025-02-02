@@ -80,6 +80,7 @@ SHIFT_REFLECTOR: Dict[str, str] = {
     "-": "_",
     "=": "+",
     "`": "~",
+    "decimal": "delete",
 }
 
 SHIFT_REFLECTOR.update({v.upper(): v for v in string.ascii_lowercase})
