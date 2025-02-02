@@ -16,6 +16,11 @@ def RTLAST(args: Tuple[Any, Optional[str]]) -> Any:
     return args[-1]
 
 
+class KeyNotFoundError(Exception):
+    def __init__(self, key: Optional[str] = None, _id: Optional[int] = None) -> None:
+        super().__init__(f"Key {key}{'(' + str(_id) + ')' if _id else ''} not found")
+
+
 class CALLBACK_REFLECTOR:
     """回调函数注册器
     注册的回调函数为全局回调函数, 即不同的实例共享回调函数
@@ -196,25 +201,43 @@ class KeyboardMonitor(threading.Thread):
         return wrapper
 
     def _unregister_given_key(
-        self, key: str, fnc: Optional[REFL_FNC_TYPE] = None, _id: Optional[int] = None
+        self,
+        key: str,
+        fnc: Optional[REFL_FNC_TYPE] = None,
+        _id: Optional[int] = None,
+        ignore_error: bool = False,
     ) -> None:
         if fnc is None and _id is None:  # fnc为None时删除映射
-            del KEY_REFLECTOR[key]
+            if key in KEY_REFLECTOR:
+                del KEY_REFLECTOR[key]
+            else:
+                if not ignore_error:
+                    raise KeyNotFoundError(key=key)
+
         elif fnc is not None:  # id为None时删除所有fnc
             delete_keys: List[int] = []
             for k, v in KEY_REFLECTOR[key].items():
                 if v == fnc:
                     delete_keys.append(k)
             for k in delete_keys:
-                del KEY_REFLECTOR[key][k]
+                if key in KEY_REFLECTOR and k in KEY_REFLECTOR[key]:
+                    del KEY_REFLECTOR[key][k]
+                else:
+                    if not ignore_error:
+                        raise KeyNotFoundError(key=key, _id=k)
 
         elif _id is not None:
-            del KEY_REFLECTOR[key][_id]
+            if key in KEY_REFLECTOR and _id in KEY_REFLECTOR[key]:
+                del KEY_REFLECTOR[key][_id]
+            else:
+                if not ignore_error:
+                    raise KeyNotFoundError(key=key, _id=_id)
 
     def _unregister_ungiven_key(
         self,
         fnc: Optional[REFL_FNC_TYPE] = None,
         _id: Optional[int] = None,
+        ignore_error: bool = False,
     ) -> None:
         # 解除fnc的所有映射
         for k, v in KEY_REFLECTOR.items():
@@ -223,13 +246,18 @@ class KeyboardMonitor(threading.Thread):
                 if f == fnc:
                     delete_ids.append(_id)
             for _id in delete_ids:
-                del KEY_REFLECTOR[k][_id]
+                if k in KEY_REFLECTOR and _id in KEY_REFLECTOR[k]:
+                    del KEY_REFLECTOR[k][_id]
+                else:
+                    if not ignore_error:
+                        raise KeyNotFoundError(key=k, _id=_id)
 
     def unregister(
         self,
         key: Optional[str] = None,
         fnc: Optional[REFL_FNC_TYPE] = None,
         _id: Optional[int] = None,
+        ignore_error: bool = True,
     ) -> None:
         """
         解除按键映射
@@ -255,14 +283,16 @@ class KeyboardMonitor(threading.Thread):
             ValueError: key and fnc cannot be None at the same time
             ValueError: _id and fnc cannot be given at the same time
         """
-        if not (key or fnc):
+        if not (key or fnc) and not ignore_error:
             raise ValueError("key and fnc cannot be None at the same time")
-        if _id and fnc:
+        if _id and fnc and not ignore_error:
             raise ValueError("_id and fnc cannot be given at the same time")
         if key is not None:
-            self._unregister_given_key(key=key, fnc=fnc, _id=_id)
+            self._unregister_given_key(
+                key=key, fnc=fnc, _id=_id, ignore_error=ignore_error
+            )
         else:
-            self._unregister_ungiven_key(fnc=fnc, _id=_id)
+            self._unregister_ungiven_key(fnc=fnc, _id=_id, ignore_error=ignore_error)
 
     @classmethod
     def get_total_monitor_num(cls) -> int:
